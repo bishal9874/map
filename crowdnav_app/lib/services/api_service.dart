@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import '../models/route_model.dart';
@@ -6,12 +7,15 @@ import '../models/report_model.dart';
 import '../models/geocoding_result.dart';
 
 class ApiService {
-  // Change this to your backend URL
-  // For Android emulator: 10.0.2.2:3000
-  // For physical device: your computer's IP:3000
-  static const String _baseUrl = 'http://10.0.2.2:3000/api';
+  // Platform-aware backend URL:
+  // - Web: localhost:3000 (same machine)
+  // - Android emulator: 10.0.2.2:3000 (host loopback alias)
+  // - Physical device: replace with your computer's IP:3000
+  static String get _baseUrl => kIsWeb
+      ? 'http://localhost:3000/api'
+      : 'http://10.0.2.2:3000/api';
   
-  // Direct OSRM and Nominatim APIs as fallback
+  // Direct OSRM and Nominatim APIs as fallback (NOT usable on web due to CORS)
   static const String _osrmUrl = 'https://router.project-osrm.org';
   static const String _nominatimUrl = 'https://nominatim.openstreetmap.org';
 
@@ -28,8 +32,11 @@ class ApiService {
       if (backendRoute != null) return backendRoute;
     } catch (_) {}
     
-    // Fallback to direct OSRM
-    return _getRouteFromOSRM(fromLat, fromLon, toLat, toLon);
+    // Fallback to direct OSRM (not available on web due to CORS)
+    if (!kIsWeb) {
+      return _getRouteFromOSRM(fromLat, fromLon, toLat, toLon);
+    }
+    return null;
   }
 
   static Future<RouteModel?> _getRouteFromBackend(
@@ -116,11 +123,11 @@ class ApiService {
   /// Search for places using Nominatim
   static Future<List<GeocodingResult>> searchPlaces(String query) async {
     try {
-      // Try backend first
+      // Try backend first (required on web due to CORS)
       try {
         final response = await http.get(
           Uri.parse('$_baseUrl/geocode?q=${Uri.encodeComponent(query)}'),
-        ).timeout(const Duration(seconds: 5));
+        ).timeout(const Duration(seconds: 10));
         
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
@@ -130,23 +137,27 @@ class ApiService {
                 .toList();
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        print('Backend geocode error: $e');
+      }
       
-      // Direct Nominatim fallback
-      final url = '$_nominatimUrl/search?q=${Uri.encodeComponent(query)}&format=json&limit=5&addressdetails=1';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'User-Agent': 'CrowdNav/1.0'},
-      ).timeout(const Duration(seconds: 10));
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body) as List;
-        return data.map((item) => GeocodingResult(
-          displayName: item['display_name'] ?? '',
-          latitude: double.tryParse(item['lat']?.toString() ?? '0') ?? 0,
-          longitude: double.tryParse(item['lon']?.toString() ?? '0') ?? 0,
-          type: item['type'] ?? '',
-        )).toList();
+      // Direct Nominatim fallback (NOT available on web due to CORS)
+      if (!kIsWeb) {
+        final url = '$_nominatimUrl/search?q=${Uri.encodeComponent(query)}&format=json&limit=5&addressdetails=1';
+        final response = await http.get(
+          Uri.parse(url),
+          headers: {'User-Agent': 'CrowdNav/1.0'},
+        ).timeout(const Duration(seconds: 10));
+        
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body) as List;
+          return data.map((item) => GeocodingResult(
+            displayName: item['display_name'] ?? '',
+            latitude: double.tryParse(item['lat']?.toString() ?? '0') ?? 0,
+            longitude: double.tryParse(item['lon']?.toString() ?? '0') ?? 0,
+            type: item['type'] ?? '',
+          )).toList();
+        }
       }
     } catch (e) {
       print('Search error: $e');
@@ -157,15 +168,34 @@ class ApiService {
   /// Reverse geocode coordinates to address
   static Future<String?> reverseGeocode(double lat, double lon) async {
     try {
-      final url = '$_nominatimUrl/reverse?lat=$lat&lon=$lon&format=json';
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {'User-Agent': 'CrowdNav/1.0'},
-      ).timeout(const Duration(seconds: 10));
+      // Try backend first (required on web due to CORS)
+      try {
+        final response = await http.get(
+          Uri.parse('$_baseUrl/reverse-geocode?lat=$lat&lon=$lon'),
+        ).timeout(const Duration(seconds: 10));
+        
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['success'] == true) {
+            return data['result']?['displayName'];
+          }
+        }
+      } catch (e) {
+        print('Backend reverse geocode error: $e');
+      }
       
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['display_name'];
+      // Direct Nominatim fallback (NOT available on web due to CORS)
+      if (!kIsWeb) {
+        final url = '$_nominatimUrl/reverse?lat=$lat&lon=$lon&format=json';
+        final response = await http.get(
+          Uri.parse(url),
+          headers: {'User-Agent': 'CrowdNav/1.0'},
+        ).timeout(const Duration(seconds: 10));
+        
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          return data['display_name'];
+        }
       }
     } catch (e) {
       print('Reverse geocode error: $e');

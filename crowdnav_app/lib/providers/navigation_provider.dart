@@ -95,19 +95,27 @@ class NavigationProvider with ChangeNotifier {
 
   // ============ SEARCH ============
 
+  // Debounce timer for search
+  Timer? _searchDebounce;
+
   Future<void> searchPlaces(String query) async {
     if (query.length < 2) {
       _searchResults = [];
+      _searchDebounce?.cancel();
       notifyListeners();
       return;
     }
 
-    _isSearching = true;
-    notifyListeners();
+    // Debounce: wait 500ms after the user stops typing
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () async {
+      _isSearching = true;
+      notifyListeners();
 
-    _searchResults = await ApiService.searchPlaces(query);
-    _isSearching = false;
-    notifyListeners();
+      _searchResults = await ApiService.searchPlaces(query);
+      _isSearching = false;
+      notifyListeners();
+    });
   }
 
   void setSource(GeocodingResult result) {
@@ -381,6 +389,7 @@ class NavigationProvider with ChangeNotifier {
     _locationSubscription?.cancel();
     _alertCheckTimer?.cancel();
     _reportCheckTimer?.cancel();
+    _searchDebounce?.cancel();
     LocationService.stopTracking();
     super.dispose();
   }
