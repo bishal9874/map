@@ -111,8 +111,22 @@ class RouteService {
       const url = `${NOMINATIM_API}/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
       
       const response = await fetch(url, {
-        headers: { 'User-Agent': 'CrowdNav/1.0' },
+        headers: { 
+          'User-Agent': 'CrowdNav/1.0 (crowdnav-navigation-app)',
+          'Accept': 'application/json',
+        },
       });
+      
+      if (!response.ok) {
+        console.error(`Nominatim returned status ${response.status}`);
+        return [];
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        console.error(`Nominatim returned non-JSON content-type: ${contentType}`);
+        return [];
+      }
       
       const data = await response.json();
       
@@ -125,7 +139,7 @@ class RouteService {
       }));
     } catch (error) {
       console.error('Geocoding error:', error);
-      throw error;
+      return [];
     }
   }
   
@@ -137,8 +151,22 @@ class RouteService {
       const url = `${NOMINATIM_API}/reverse?lat=${latitude}&lon=${longitude}&format=json`;
       
       const response = await fetch(url, {
-        headers: { 'User-Agent': 'CrowdNav/1.0' },
+        headers: { 
+          'User-Agent': 'CrowdNav/1.0 (crowdnav-navigation-app)',
+          'Accept': 'application/json',
+        },
       });
+
+      if (!response.ok) {
+        console.error(`Nominatim reverse returned status ${response.status}`);
+        return { displayName: null, address: null };
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        console.error(`Nominatim reverse returned non-JSON: ${contentType}`);
+        return { displayName: null, address: null };
+      }
       
       const data = await response.json();
       
@@ -148,7 +176,7 @@ class RouteService {
       };
     } catch (error) {
       console.error('Reverse geocoding error:', error);
-      throw error;
+      return { displayName: null, address: null };
     }
   }
   
