@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+
+# Environment variables
+.env
+
+# Logs & DB
+*.log
+*.sqlite
+*.db
